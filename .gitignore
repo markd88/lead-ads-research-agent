@@ -1,0 +1,19 @@
+.env
+.venv/
+runs/
+.gstack/
+.claude/settings.local.json
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+video/build/frames/
+*.mp4
+
+# local-only working material (not part of submission)
+HANDOFF.md
+PITCH.md
+docs/
+.superpowers/
+video/
+tests/test_demo_video.py
