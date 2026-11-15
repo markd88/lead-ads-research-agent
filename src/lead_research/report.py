@@ -70,7 +70,21 @@ def render_markdown(report: ResearchReport, state: RunState) -> str:
             L.append(f"| {f.step or ''} | {esc(f.key)} | {esc(f.label)} | {esc(f.type)} | {esc(opts)} | {req} |")
         L += [""] + [f"> {esc(n)}" for n in fm.notes] + [""]
     L += ["## Unknowns", ""] + ([f"- {esc(u)}" for u in report.unknowns] or ["_None._"]) + [""]
-    L += ["## Evidence", ""]
+    L += ["## Telem session", ""]
+    ts = state.telem_session
+    if ts:
+        L.append(f"- Session `{esc(ts['session_id'])}` — one Telem session for every search and fetch in this run")
+        if "interaction_count" in ts:
+            L.append(f"- Server-side history: {ts['interaction_count']} interactions (see https://hack.telem.ai/)")
+        if ts.get("error"):
+            L.append(f"- History unavailable: {esc(ts['error'])}")
+    else:
+        L.append("_No Telem session was created._")
+    if state.monitor:
+        m = state.monitor
+        L.append(f"- Monitor `{esc(m['monitor_id'])}` watching {esc(m['domain'])} every {esc(m['frequency'])} "
+                 f"(status {esc(m['status'])}, expires {esc(str(m['expires_at']))})")
+    L += ["", "## Evidence", ""]
     for ev in state.evidence.all():
         L.append(f"- **{ev.id}** `{ev.method}` {esc(ev.url)} — {esc(ev.locator)}: {esc(ev.excerpt[:200])}")
     return "\n".join(L) + "\n"
@@ -80,7 +94,8 @@ def write_report(report: ResearchReport, state: RunState, output_dir: Path) -> N
     output_dir.mkdir(parents=True, exist_ok=True)
     data = {"report": report.model_dump(), "forms": [f.model_dump() for f in state.forms],
             "evidence": [e.model_dump() for e in state.evidence.all()],
-            "budget_used": state.attempts}
+            "budget_used": state.attempts, "telem_session": state.telem_session,
+            "monitor": state.monitor}
     (output_dir / "report.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
     (output_dir / "report.md").write_text(render_markdown(report, state))
     (output_dir / "trace.jsonl").write_text(state.trace_jsonl())

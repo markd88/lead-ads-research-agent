@@ -14,18 +14,21 @@ Reports separate **facts**, **inferences** and **unknowns**. A merchant asking a
 
 ## Architecture
 
-**Python 3.11+ · PydanticAI · Telem SDK · Playwright Chromium** — one agent, four tools, no custom agent loop.
+**Python 3.11+ · PydanticAI · Telem SDK · Playwright Chromium** — one agent, five tools, no custom agent loop.
 
 ```text
 company name / URL
     ↓
 PydanticAI Research Agent  (request_limit=8, tool_calls_limit=12, 180s wall timeout)
-    ├─ search_web      Telem Search, auto_routing="accuracy", shared session
+    ├─ search_web      Telem Search, auto_routing="accuracy", goal/context metadata
+    ├─ search_site     Telem Search scoped to the merchant domain (include_domains)
     ├─ fetch_pages     Telem Fetch (rich = extended tier incl. HTML; text = Tavily via Telem)
     ├─ inspect_form    deterministic parser: native controls + embedded JSON config
     └─ browser_inspect read-only Playwright render, all frames, screenshot
     ↓
 report.md + report.json + trace.jsonl (+ screenshots/)
+    ↓ (--watch)
+Telem Monitor: daily check of the merchant domain for lead-form changes
 ```
 
 | Module | Responsibility |
@@ -48,7 +51,11 @@ report.md + report.json + trace.jsonl (+ screenshots/)
 The app **refuses any `TELEM_BASE_URL` other than `https://hack.telem.ai/api`** (no `/v1` suffix; never the production router).
 
 How Telem is used:
-- `auto_routing="accuracy"` is set explicitly; searches reuse the first `session_id`.
+- **One run = one Telem session.** Every search and fetch shares the session created by the first call; at the end the agent pulls Telem's server-side session history into the report, so the run can be audited on hack.telem.ai.
+- **Agent intent travels with each request.** Searches send `goal`, `context` and `metadata` (app, tool, target), and fetches send `metadata`, so Telem routes and records with the agent's purpose.
+- **Site-scoped discovery.** Once the official domain is known, `search_site` uses `include_domains` to find apply/quote/eligibility pages on the merchant's own site.
+- **Continuous monitoring.** `--watch` creates a Telem Monitor (daily, 30-day TTL, scoped to the merchant domain) whose agent tracks changes to lead forms and eligibility questions; `--changes` reads what it found.
+- `auto_routing="accuracy"` is set explicitly.
 - Fetch `rich` mode requests the `extended` tier for HTML; `text` mode pins the Tavily provider.
 - Real provider, status, session and interaction IDs are written to `trace.jsonl`.
 - Per-URL failures inside an HTTP 200 are surfaced, not hidden. Missing HTML is reported as a capability gap — not as "no form" — and the agent falls back to the browser.
@@ -71,9 +78,16 @@ python -m lead_research "https://yourdreamdegree.com/education-29" --out runs/ed
 python -m lead_research "YourDreamDegree" --out runs/company-demo
 ```
 
+Watch a merchant's lead forms over time (creates a Telem Monitor, then read its changes later):
+
+```bash
+python -m lead_research "https://yourdreamdegree.com/education-29" --out runs/watch-demo --watch
+python -m lead_research --changes <MONITOR_ID>
+```
+
 Exit codes: `0` completed, `2` partial (budget/timeout), `1` config or run error. Existing output directories are never overwritten. Model defaults to `anthropic:claude-fable-5-2` (`RESEARCH_MODEL` / `--model`).
 
-Live runs spend Telem and model credits. Per-run caps: 3 searches, 5 fetched URLs, 2 browser inspections, 8 model requests.
+Live runs spend Telem and model credits. Per-run caps: 4 searches, 5 fetched URLs, 2 browser inspections, 8 model requests.
 
 ## Output
 
@@ -81,7 +95,7 @@ Live runs spend Telem and model credits. Per-run caps: 3 searches, 5 fetched URL
 runs/education-demo/
   report.md     business findings, lead-intake findings, added-by-form-discovery, forms table, unknowns, evidence
   report.json   structured report + forms + evidence + budget used
-  trace.jsonl   every tool action with provider / session / interaction IDs
+  trace.jsonl   every tool action with provider / session / interaction IDs, session history, monitor
   screenshots/  browser evidence (when used)
 ```
 
@@ -105,7 +119,7 @@ Offline: sanitized fixture of the real education page config, a fake Telem clien
 
 ## Status
 
-- ✅ Implemented and tested offline: form parser (6 steps / 7 fields case), Telem wrappers (routing, session reuse, mixed failures, Tavily text mode, base-URL guard), budgets, URL policy, citation validation, report writer, CLI, end-to-end agent loop with a test model.
+- ✅ Implemented and tested offline: form parser (6 steps / 7 fields case), Telem wrappers (routing, one session across search + fetch, goal/metadata, site-scoped search, session history, monitors, mixed failures, Tavily text mode, base-URL guard), budgets, URL policy, citation validation, report writer, CLI, end-to-end agent loop with a test model.
 - ✅ Playwright tool smoke-tested against a local fixture server (6 steps / 7 fields extracted, screenshot saved, unallowed loopback URL rejected).
-- ⚠️ Not yet verified live: real Telem calls against merchant pages, a real model run, and the browser on a live merchant site.
+- ⚠️ Not yet verified live: real Telem calls (search, fetch, session history, monitors) against merchant pages, a real model run, and the browser on a live merchant site.
 

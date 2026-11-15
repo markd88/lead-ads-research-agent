@@ -97,7 +97,7 @@ class EvidenceStore:
         return list(self._items.values())
 
 
-DEFAULT_LIMITS = {"search": 3, "fetch_url": 5, "browser": 2}
+DEFAULT_LIMITS = {"search": 4, "fetch_url": 5, "browser": 2}
 
 
 @dataclass
@@ -107,6 +107,8 @@ class RunState:
     documents: dict[str, Document] = field(default_factory=dict)
     forms: list[FormSchema] = field(default_factory=list)
     search_session: str | None = None
+    telem_session: dict | None = None
+    monitor: dict | None = None
     trace: list[dict] = field(default_factory=list)
     attempts: dict[str, int] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)

@@ -55,9 +55,32 @@ def test_hackathon_base_url_only():
             resolve_base_url(bad)
 
 
+class FakeSessions:
+    def __init__(self, calls):
+        self.calls = calls
+
+    async def history(self, sid, full=False):
+        self.calls.append(("history", sid, {}))
+        return NS(session_id=sid, interactions=[{"id": "int-1", "type": "search"}, {"id": "int-2", "type": "fetch"}])
+
+
+class FakeMonitors:
+    def __init__(self, calls):
+        self.calls = calls
+
+    async def create(self, query, **kw):
+        self.calls.append(("monitor", query, kw))
+        return NS(id="mon-1", status="active", frequency=kw["frequency"], expires_at="2026-12-14", session_id="sess-m")
+
+    async def changes(self, monitor_id, **kw):
+        return NS(changes=[NS(model_dump=lambda: {"seq": 1, "kind": "value_changed"})])
+
+
 class FakeTelem:
     def __init__(self):
         self.calls = []
+        self.sessions = FakeSessions(self.calls)
+        self.monitors = FakeMonitors(self.calls)
 
     async def search(self, query, **kw):
         self.calls.append(("search", query, kw))
@@ -77,7 +100,8 @@ class FakeTelem:
 
 def tools():
     st = RunState()
-    return st, TelemTools(FakeTelem(), st, allowed_test_origins=frozenset({"https://yourdreamdegree.com", "https://example.com"}))
+    return st, TelemTools(FakeTelem(), st, allowed_test_origins=frozenset({"https://yourdreamdegree.com", "https://example.com"}),
+                          target="YourDreamDegree")
 
 
 def test_routing_session_and_dedupe():
@@ -160,3 +184,55 @@ def test_cli_refuses_existing_dir_and_bad_base_url(tmp_path, monkeypatch, capsys
     monkeypatch.setenv("TELEM_BASE_URL", "https://api.telem.ai")
     assert main(["x", "--out", str(tmp_path / "new")]) == 1
     assert "hack.telem.ai" in capsys.readouterr().err
+
+
+def test_one_session_for_search_and_fetch_with_goal_metadata():
+    st, t = tools()
+    asyncio.run(t.search_web("YourDreamDegree"))
+    asyncio.run(t.fetch_pages(["https://yourdreamdegree.com/education-29"]))
+    search_kw, fetch_kw = t.client.calls[0][2], t.client.calls[1][2]
+    assert "YourDreamDegree" in search_kw["goal"] and search_kw["metadata"]["app"] == "lead_lens"
+    assert fetch_kw["session"] == "sess-1" and fetch_kw["metadata"]["tool"] == "fetch_pages"
+
+
+def test_fetch_first_creates_the_run_session():
+    st, t = tools()
+    asyncio.run(t.fetch_pages(["https://yourdreamdegree.com/education-29"]))
+    asyncio.run(t.search_web("YourDreamDegree apply"))
+    assert t.client.calls[0][2]["session"] is None and t.client.calls[1][2]["session"] == "sess-1"
+
+
+def test_site_scoped_search():
+    st, t = tools()
+    asyncio.run(t.search_web("apply", domain="www.YourDreamDegree.com"))
+    kw = t.client.calls[0][2]
+    assert kw["include_domains"] == ["yourdreamdegree.com"] and kw["metadata"]["tool"] == "search_site"
+
+
+def test_session_record_and_monitor_in_report(tmp_path):
+    from lead_research.telem_tools import merchant_domain
+    st, t = tools()
+    asyncio.run(t.search_web("YourDreamDegree"))
+    rec = asyncio.run(t.session_record())
+    assert rec["interaction_count"] == 2
+    assert merchant_domain("https://www.yourdreamdegree.com/education-29", st) == "yourdreamdegree.com"
+    info = asyncio.run(t.create_monitor("yourdreamdegree.com"))
+    q, kw = t.client.calls[-1][1], t.client.calls[-1][2]
+    assert "yourdreamdegree.com" in q and kw["include_domains"] == ["yourdreamdegree.com"] and kw["ttl"] == "30d"
+    assert info["monitor_id"] == "mon-1"
+    md = render_markdown(ResearchReport(target="X"), st)
+    assert "sess\\-1" in md or "sess-1" in md
+    assert "mon\\-1" in md or "mon-1" in md
+    assert asyncio.run(t.monitor_changes("mon-1"))[0]["kind"] == "value_changed"
+
+
+def test_no_session_no_history_call():
+    st = RunState()
+    t = TelemTools(FakeTelem(), st)
+    assert asyncio.run(t.session_record()) is None and not t.client.calls
+
+
+def test_cli_requires_target_or_changes(capsys):
+    from lead_research.__main__ import main
+    with pytest.raises(SystemExit):
+        main([])

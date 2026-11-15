@@ -19,10 +19,12 @@ WALL_TIMEOUT_S = 180
 INSTRUCTIONS = """\
 You research a lead-generation advertiser (education, lending, auto, health...) for an ad platform team.
 Workflow:
-1. If given a company name, use search_web to find the official site and lead-capture pages. If given a URL, fetch it directly.
-2. fetch_pages(mode="rich") on the chosen pages (max 5 URLs total).
-3. For every fetched document call inspect_form(document_id). If it has no HTML or no form, call browser_inspect(url) once.
-4. Write the report. Every finding MUST cite evidence_ids returned by tools; never invent IDs.
+1. If given a company name, use search_web to find the official site. If given a URL, fetch it directly.
+2. Once the official domain is known, use search_site(domain, query) to find lead-capture pages on that site
+   (e.g. "apply", "get a quote", "check eligibility", "request info").
+3. fetch_pages(mode="rich") on the chosen pages (max 5 URLs total).
+4. For every fetched document call inspect_form(document_id). If it has no HTML or no form, call browser_inspect(url) once.
+5. Write the report. Every finding MUST cite evidence_ids returned by tools; never invent IDs.
 Rules:
 - added_findings = facts only visible via form/config/browser inspection, not in page body text.
 - A question in a form shows what the merchant ASKS, not who it rejects: mark such conclusions kind="inference".
@@ -51,6 +53,11 @@ def build_agent(model) -> Agent[ResearchDeps, ResearchReport]:
     async def search_web(ctx: RunContext[ResearchDeps], query: str) -> str:
         """Search the public web via Telem (auto-routed for accuracy). Returns results with evidence_ids."""
         return _dump(await ctx.deps.telem.search_web(query))
+
+    @agent.tool
+    async def search_site(ctx: RunContext[ResearchDeps], domain: str, query: str) -> str:
+        """Search only within the merchant's domain (Telem include_domains) to find lead-capture pages."""
+        return _dump(await ctx.deps.telem.search_web(query, domain=domain))
 
     @agent.tool
     async def fetch_pages(ctx: RunContext[ResearchDeps], urls: list[str], mode: str = "rich") -> str:
@@ -84,5 +91,6 @@ async def run_research(target: str, model, deps: ResearchDeps) -> ResearchReport
         report = partial_report(target, deps.state, f"budget exhausted: {e}")
     except asyncio.TimeoutError:
         report = partial_report(target, deps.state, f"wall timeout {WALL_TIMEOUT_S}s")
+    await deps.telem.session_record()
     deps.state.log("run_end", status=report.status, stop_reason=report.stop_reason)
     return report

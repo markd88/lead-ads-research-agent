@@ -17,3 +17,4 @@ docs/
 .superpowers/
 video/
 tests/test_demo_video.py
+PROJECT_STORY.md
