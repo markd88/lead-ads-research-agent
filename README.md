@@ -14,6 +14,12 @@ Verified case: [YourDreamDegree](https://yourdreamdegree.com/education-29). The 
 
 Reports separate **facts**, **inferences** and **unknowns**, so every conclusion is traceable to its evidence.
 
+## Market
+
+- **$294.6B** — US internet ad revenue in 2025, up 13.9% year over year. Social ($117.7B) and search ($114.2B), the channels where lead ads run, make up most of it. ([IAB/PwC, 2026](https://www.iab.com/insights/internet-advertising-revenue-report-full-year-2025/))
+- **$5.59B → $32.1B** — the global lead generation market, 2025 to 2035, a 17.2% CAGR. ([Research and Markets](https://www.researchandmarkets.com/report/global-lead-generation-market))
+- Every lead-gen advertiser that an ad platform or agency onboards needs this research: what it sells, where its lead entry points are, and what its forms ask. Today that research is done by hand.
+
 ## Architecture
 
 **Python 3.11+ · PydanticAI · Telem SDK · Playwright Chromium** — one agent, five tools, no custom agent loop.
