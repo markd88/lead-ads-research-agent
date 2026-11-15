@@ -2,6 +2,8 @@
 
 **Don't just read how a merchant describes itself — discover what its lead forms actually ask.**
 
+🎬 **Demo video (1 min):** https://vimeo.com/1246929198
+
 A research agent for ad platforms and lead-gen agencies studying lead-driven advertisers (education, lending, auto, health). Input a company name or URL; output a sourced report of business facts, lead-capture entry points, and the questionnaire structure that ordinary page-text reading misses.
 
 ## Why
